@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Le vrai du faux — BTS 2027</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='85'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;1,400;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#15110d;
+    --bg-2:#1d1712;
+    --ink:#ece4d6;
+    --muted:#948c7c;
+    --accent:#b8332c;
+    --shadow:0 30px 70px -24px rgba(0,0,0,.8), 0 10px 24px -10px rgba(0,0,0,.65);
+    --serif:"Newsreader", Georgia, "Times New Roman", serif;
+    --sans:"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:var(--bg);color:var(--ink);font-family:var(--sans);
+    overflow:hidden;-webkit-tap-highlight-color:transparent;
+  }
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;}
+
+  /* ---------- Scène (zone d'affichage de la page) ---------- */
+  #stage{
+    position:relative;flex:1;min-height:0;
+    display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at center, var(--bg-2) 0%, var(--bg) 72%);
+    perspective:2200px;
+    touch-action:none;
+  }
+  .page-stack{position:relative;width:90%;height:90%;transform-style:preserve-3d;}
+  .page-layer{
+    position:absolute;inset:0;
+    display:flex;align-items:center;justify-content:center;
+  }
+  #baseLayer{z-index:1;}
+  #flipLayer{
+    z-index:2;
+    transform-origin:right center;
+    transform:rotateY(0deg);
+    opacity:1;
+    backface-visibility:hidden;
+  }
+  #flipLayer.flipping{transition:transform .48s cubic-bezier(.4,0,.2,1), opacity .48s ease;}
+  #flipLayer.flip-fwd{transform:rotateY(-115deg);opacity:0;}
+  #flipLayer.flip-back{transform:rotateY(115deg);opacity:0;}
+  @media (prefers-reduced-motion: reduce){
+    #flipLayer.flipping{transition:opacity .25s ease;}
+    #flipLayer.flip-fwd, #flipLayer.flip-back{transform:none;}
+  }
+
+  .page-img{max-width:100%;max-height:100%;object-fit:contain;box-shadow:var(--shadow);background:#fff;border-radius:2px;}
+
+  #flipLayer .shade{
+    position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(var(--shade-dir,to right), rgba(0,0,0,0) 55%, rgba(0,0,0,.4) 100%);
+    opacity:0;transition:opacity .48s ease;
+  }
+  #flipLayer.flipping .shade{opacity:1;}
+
+  /* zones cliquables gauche/droite pour tourner la page */
+  .tap-zone{position:absolute;top:0;bottom:0;width:44%;background:transparent;border:0;padding:0;margin:0;cursor:pointer;z-index:5;}
+  .tap-zone.left{left:0;}
+  .tap-zone.right{right:0;}
+
+  #bookLabel{
+    position:absolute;top:16px;left:18px;z-index:6;
+    font-family:var(--serif);font-style:italic;font-size:13px;color:var(--muted);
+    pointer-events:none;
+  }
+  #hint{
+    position:absolute;bottom:16px;right:18px;z-index:6;
+    font-size:12px;color:var(--muted);
+    opacity:1;transition:opacity 1s ease;pointer-events:none;
+  }
+  #hint.hidden{opacity:0;}
+
+  /* ---------- États chargement / vide ---------- */
+  .state-screen{
+    position:absolute;inset:0;z-index:10;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    background:var(--bg);color:var(--muted);text-align:center;padding:0 24px;
+  }
+  .state-screen.hidden{display:none;}
+  .state-screen p{font-family:var(--serif);font-style:italic;font-size:16px;max-width:420px;line-height:1.5;margin:0;}
+  .spinner{width:26px;height:26px;border-radius:50%;border:2px solid rgba(236,228,214,.15);border-top-color:var(--accent);animation:spin .9s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* ---------- Barre de contrôle ---------- */
+  #controls{
+    flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:22px;
+    padding:14px 20px calc(14px + env(safe-area-inset-bottom));
+    background:var(--bg-2);border-top:1px solid rgba(236,228,214,.08);
+  }
+  .nav-btn{
+    appearance:none;background:transparent;border:1px solid rgba(236,228,214,.18);
+    color:var(--ink);width:42px;height:42px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    transition:background .15s ease, border-color .15s ease, transform .1s ease;
+  }
+  .nav-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+  .nav-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .nav-btn:active{transform:scale(.92);}
+  .nav-btn:disabled{opacity:.3;cursor:default;}
+  .nav-btn:focus-visible, .tap-zone:focus-visible, #indicator input:focus-visible{outline:2px solid var(--accent);outline-offset:3px;}
+
+  #indicator{
+    font-family:var(--serif);font-style:italic;font-size:15px;color:var(--muted);
+    min-width:96px;text-align:center;cursor:text;letter-spacing:.02em;user-select:none;
+  }
+  #indicator input{
+    width:46px;background:transparent;border:none;border-bottom:1px solid var(--accent);
+    color:var(--ink);font:inherit;font-style:normal;text-align:center;
+  }
+  #indicator input:focus{outline:none;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="stage">
+    <div class="page-stack">
+      <div id="baseLayer" class="page-layer"><img class="page-img" id="baseImg" alt=""></div>
+      <div id="flipLayer" class="page-layer">
+        <img class="page-img" id="flipImg" alt="">
+        <div class="shade"></div>
+      </div>
+    </div>
+    <button class="tap-zone left" id="zoneLeft" aria-label="Page précédente"></button>
+    <button class="tap-zone right" id="zoneRight" aria-label="Page suivante"></button>
+
+    <div id="bookLabel">Le vrai du faux — BTS 2027</div>
+    <div id="hint">Utilise ← → pour tourner les pages</div>
+
+    <div class="state-screen" id="loadingScreen">
+      <div class="spinner"></div>
+      <p>Chargement du livre…</p>
+    </div>
+    <div class="state-screen hidden" id="emptyScreen">
+      <p>Aucune page trouvée pour l’instant. Place tes images (1.jpg, 2.jpg, … ou .png) dans le dossier <code>pages/</code> à côté de ce fichier index.html, puis recharge la page.</p>
+    </div>
+  </div>
+
+  <div id="controls">
+    <button class="nav-btn" id="btnPrev" aria-label="Page précédente">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div id="indicator" aria-live="polite"><span id="indicatorText">– / –</span></div>
+    <button class="nav-btn" id="btnNext" aria-label="Page suivante">
+      <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+  </div>
+
+</div>
+
+<script>
+/* =========================================================================
+   CONFIGURATION — à adapter si besoin
+   ========================================================================= */
+const CONFIG = {
+  imageFolder: "pages/",         // dossier des images relatif à ce fichier
+  imageExtensions: ["jpg", "png"], // extensions essayées dans cet ordre pour chaque numéro
+  maxPagesToProbe: 220,           // borne haute de recherche
+};
+
+/* =========================================================================
+   Détection des pages disponibles
+   Pour chaque numéro N, on essaie N.jpg puis N.png (première trouvée
+   gagne) — ça permet d'ajouter de nouvelles pages plus tard sans avoir
+   à toucher au code, quel que soit le format du fichier ajouté.
+   Les numéros manquants (ex: une double-page fusionnée dans une seule
+   photo) sont simplement ignorés — pas besoin que la suite soit continue.
+   ========================================================================= */
+function pageUrlCandidates(n){
+  return CONFIG.imageExtensions.map((ext) => `${CONFIG.imageFolder}${n}.${ext}`);
+}
+
+function checkExists(url){
+  return fetch(url, { method: "HEAD", cache: "no-store" })
+    .then((res) => res.ok)
+    .catch(() => {
+      // Le fetch échoue si la page est ouverte en local (file://) plutôt
+      // que servie en http — on retombe sur un chargement d'image classique,
+      // qui fonctionne aussi en local.
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+        img.src = url;
+      });
+    });
+}
+
+async function resolvePage(n){
+  const candidates = pageUrlCandidates(n);
+  for (const url of candidates){
+    // eslint-disable-next-line no-await-in-loop
+    const ok = await checkExists(url);
+    if (ok) return url;
+  }
+  return null;
+}
+
+async function detectPages(){
+  const checks = [];
+  for (let n = 1; n <= CONFIG.maxPagesToProbe; n++){
+    checks.push(resolvePage(n).then((url) => (url ? { n, url } : null)));
+  }
+  const results = await Promise.all(checks);
+  return results
+    .filter((r) => r !== null)
+    .sort((a, b) => a.n - b.n)
+    .map((r) => r.url);
+}
+
+/* =========================================================================
+   État du lecteur
+   ========================================================================= */
+let pages = [];
+let idx = 0;
+let pendingIdx = 0;
+let isAnimating = false;
+
+const baseImg = document.getElementById("baseImg");
+const flipLayer = document.getElementById("flipLayer");
+const flipImg = document.getElementById("flipImg");
+const indicatorText = document.getElementById("indicatorText");
+const indicator = document.getElementById("indicator");
+const btnPrev = document.getElementById("btnPrev");
+const btnNext = document.getElementById("btnNext");
+const zoneLeft = document.getElementById("zoneLeft");
+const zoneRight = document.getElementById("zoneRight");
+const hint = document.getElementById("hint");
+const loadingScreen = document.getElementById("loadingScreen");
+const emptyScreen = document.getElementById("emptyScreen");
+
+function updateIndicator(){
+  indicatorText.textContent = `${idx + 1} / ${pages.length}`;
+  btnPrev.disabled = idx === 0;
+  btnNext.disabled = idx === pages.length - 1;
+}
+
+function preloadNeighbors(){
+  [idx - 1, idx + 1].forEach((n) => {
+    if (n >= 0 && n < pages.length){
+      const img = new Image();
+      img.src = pages[n];
+    }
+  });
+}
+
+function renderInitial(){
+  baseImg.src = pages[idx];
+  flipImg.src = pages[idx];
+  updateIndicator();
+  preloadNeighbors();
+}
+
+function bump(el){
+  el.style.transition = "transform .12s ease";
+  el.style.transform = "scale(.985)";
+  setTimeout(() => { el.style.transform = "scale(1)"; }, 120);
+}
+
+function go(delta){
+  if (isAnimating || pages.length === 0) return;
+  const newIdx = idx + delta;
+  if (newIdx < 0 || newIdx >= pages.length){
+    bump(document.querySelector(".page-stack"));
+    return;
+  }
+  hideHint();
+  startFlip(delta > 0 ? "fwd" : "back", newIdx);
+}
+
+function startFlip(dir, newIdx){
+  isAnimating = true;
+  pendingIdx = newIdx;
+
+  flipLayer.style.setProperty("--shade-dir", dir === "fwd" ? "to right" : "to left");
+  flipLayer.style.transformOrigin = dir === "fwd" ? "right center" : "left center";
+
+  // La couche du dessous affiche déjà la nouvelle page, cachée sous celle
+  // qui va "tourner".
+  baseImg.src = pages[newIdx];
+
+  requestAnimationFrame(() => {
+    flipLayer.classList.add("flipping", dir === "fwd" ? "flip-fwd" : "flip-back");
+  });
+}
+
+flipLayer.addEventListener("transitionend", (e) => {
+  if (e.propertyName !== "transform" && e.propertyName !== "opacity") return;
+  if (!isAnimating) return;
+  idx = pendingIdx;
+  flipLayer.classList.remove("flipping", "flip-fwd", "flip-back");
+  flipImg.src = pages[idx];
+  isAnimating = false;
+  updateIndicator();
+  preloadNeighbors();
+});
+
+function hideHint(){
+  hint.classList.add("hidden");
+}
+
+/* ---------- Interactions ---------- */
+btnPrev.addEventListener("click", () => go(-1));
+btnNext.addEventListener("click", () => go(1));
+zoneLeft.addEventListener("click", () => go(-1));
+zoneRight.addEventListener("click", () => go(1));
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowLeft") go(-1);
+  else if (e.key === "ArrowRight") go(1);
+  else if (e.key === "Home") jumpTo(0);
+  else if (e.key === "End") jumpTo(pages.length - 1);
+});
+
+let touchStartX = null;
+const stage = document.getElementById("stage");
+stage.addEventListener("touchstart", (e) => { touchStartX = e.changedTouches[0].clientX; }, { passive: true });
+stage.addEventListener("touchend", (e) => {
+  if (touchStartX === null) return;
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
+  touchStartX = null;
+}, { passive: true });
+
+function jumpTo(newIdx){
+  if (isAnimating || pages.length === 0) return;
+  newIdx = Math.max(0, Math.min(pages.length - 1, newIdx));
+  if (newIdx === idx) return;
+  hideHint();
+  startFlip(newIdx > idx ? "fwd" : "back", newIdx);
+}
+
+indicator.addEventListener("click", () => {
+  if (pages.length === 0) return;
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = 1;
+  input.max = pages.length;
+  input.value = idx + 1;
+  indicatorText.replaceWith(input);
+  input.focus();
+  input.select();
+  const commit = () => {
+    const val = parseInt(input.value, 10);
+    input.replaceWith(indicatorText);
+    if (!Number.isNaN(val)) jumpTo(val - 1);
+    else updateIndicator();
+  };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") commit(); });
+  input.addEventListener("blur", commit);
+});
+
+setTimeout(hideHint, 4000);
+
+/* =========================================================================
+   Démarrage
+   ========================================================================= */
+(async function init(){
+  pages = await detectPages();
+  loadingScreen.classList.add("hidden");
+  if (pages.length === 0){
+    emptyScreen.classList.remove("hidden");
+    return;
+  }
+  renderInitial();
+})();
+</script>
+</body>
+</html>
